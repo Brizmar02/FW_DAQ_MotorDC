@@ -1,34 +1,44 @@
 /*
- *  src/main.cpp
- *  Prueba de Aislamiento para el Potenciómetro
+ * src/main.cpp
+ * Prueba de Aislamiento para el Módulo Motor
  */
 
 #include <Arduino.h>
-#include <config.h>       // Para MAX_RPM (y PIN_POTENCIOMETRO)
-#include <potenciometro.h>  // Nuestro nuevo módulo
+#include <config.h>  // Para las definiciones del motor
+#include <motor.h>   // Nuestro nuevo módulo de motor
 
 void setup() {
     Serial.begin(115200);
-    delay(1000); // Un segundo para que el monitor serial se conecte
+    delay(1000);
     
-    Serial.println("--- INICIANDO PRUEBA DE POTENCIÓMETRO ---");
+    Serial.println("--- INICIANDO PRUEBA DE MOTOR ---");
     
-    // Inicializa el módulo del potenciómetro
-    // (Esto leerá el pin definido en config.h como PIN_POTENCIOMETRO)
-    pot_init(); 
+    // Inicializa el módulo del motor (configura pines y PWM)
+    motor_init();
     
-    Serial.println("Potenciómetro inicializado. Gira el dial.");
+    Serial.println("Motor inicializado. Iniciando secuencia de prueba...");
 }
 
 void loop() {
-    // 1. Lee el valor crudo (útil para depurar, 0-4095)
-    int valor_crudo = pot_get_raw_value();
+    // --- SECUENCIA DE PRUEBA ---
 
-    // 2. Lee el valor en RPM (ya filtrado y mapeado)
-    float rpm_objetivo = pot_get_target_rpm();
-    
-    // 3. Imprime los valores en el Monitor Serial
-    Serial.printf("Valor Crudo: %d \t|  RPM Objetivo: %.2f RPM\n", valor_crudo, rpm_objetivo);
+    // 1. Mover "Adelante" (Horario) al 50% de potencia
+    Serial.println("Moviendo ADELANTE al 50%");
+    motor_move(50.0);
+    delay(3000); // Durante 3 segundos
 
-    delay(250); // Imprime 4 veces por segundo
+    // 2. Frenar
+    Serial.println("FRENANDO");
+    motor_stop(); // O motor_move(0.0)
+    delay(2000); // Durante 2 segundos
+
+    // 3. Mover "Atrás" (Antihorario) al 75% de potencia
+    Serial.println("Moviendo ATRÁS al 75%");
+    motor_move(-75.0);
+    delay(3000); // Durante 3 segundos
+
+    // 4. Frenar
+    Serial.println("FRENANDO");
+    motor_stop();
+    delay(2000); // Durante 2 segundos
 }
