@@ -29,10 +29,10 @@ const int PIN_ENC_B = 37;
 // ====================================
 
 // --- PWM (LEDC Periférico) ---
-const int PWM_CHANNEL_MOTOR = 0;       // Canal LEDC 0
-const int PWM_FREQ = 1220;             // Frecuencia (Hz)
-const int PWM_RES_BITS = 16;           // Resolución de 16 bits
-const int PWM_MAX_DUTY = 65535;        // Valor máximo (2^16 - 1)
+const int PWM_MOTOR_CHANNEL = 0;       // Canal LEDC 0
+const int PWM_MOTOR_FREQ = 1220;             // Frecuencia (Hz)
+const int PWM_MOTOR_RES_BITS = 16;           // Resolución de 16 bits
+const int PWM_MOTOR_MAX_DUTY = 65535;        // Valor máximo (2^16 - 1)
 
 // --- Sensores ---
 const float VREF = 3.3;                // Voltaje de referencia del ADC
