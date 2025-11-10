@@ -1,44 +1,54 @@
 /*
  * src/main.cpp
- * Prueba de Aislamiento para el Módulo Motor
+ * Prueba de Lógica DIRECTA (bypass motor.cpp)
  */
 
 #include <Arduino.h>
-#include <config.h>  // Para las definiciones del motor
-#include <motor.h>   // Nuestro nuevo módulo de motor
+#include <config.h> // Incluimos los pines
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    
-    Serial.println("--- INICIANDO PRUEBA DE MOTOR ---");
-    
-    // Inicializa el módulo del motor (configura pines y PWM)
-    motor_init();
-    
-    Serial.println("Motor inicializado. Iniciando secuencia de prueba...");
+    Serial.println("--- PRUEBA DIRECTA DE PINES ---");
+
+    // Configurar pines de dirección
+    pinMode(PIN_MOTOR_IN1, OUTPUT);
+    pinMode(PIN_MOTOR_IN2, OUTPUT);
+
+    // Configurar el pin STBY
+    pinMode(PIN_MOTOR_STBY, OUTPUT);
+    digitalWrite(PIN_MOTOR_STBY, HIGH); // Encender el driver
+
+    // Configurar PWM (la misma lógica de motor.cpp)
+    ledcSetup(PWM_MOTOR_CHANNEL, PWM_MOTOR_FREQ, PWM_MOTOR_RES_BITS);
+    ledcAttachPin(PIN_MOTOR_PWM, PWM_MOTOR_CHANNEL);
+
+    Serial.println("Pines configurados. Iniciando secuencia...");
 }
 
 void loop() {
-    // --- SECUENCIA DE PRUEBA ---
+    
+    Serial.println("PRUEBA: ADELANTE 50%");
+    // Adelante (IN1=H, IN2=L)
+    digitalWrite(PIN_MOTOR_IN1, HIGH);
+    digitalWrite(PIN_MOTOR_IN2, LOW);
+    // 50% de potencia
+    ledcWrite(PWM_MOTOR_CHANNEL, PWM_MOTOR_MAX_DUTY / 2); 
+    delay(3000);
 
-    // 1. Mover "Adelante" (Horario) al 50% de potencia
-    Serial.println("Moviendo ADELANTE al 50%");
-    motor_move(50.0);
-    delay(3000); // Durante 3 segundos
+    Serial.println("PRUEBA: ATRÁS 100%");
+    // Atrás (IN1=L, IN2=H)
+    digitalWrite(PIN_MOTOR_IN1, LOW);
+    digitalWrite(PIN_MOTOR_IN2, HIGH);
+    // 100% de potencia
+    ledcWrite(PWM_MOTOR_CHANNEL, PWM_MOTOR_MAX_DUTY);
+    delay(3000);
 
-    // 2. Frenar
-    Serial.println("FRENANDO");
-    motor_stop(); // O motor_move(0.0)
-    delay(2000); // Durante 2 segundos
-
-    // 3. Mover "Atrás" (Antihorario) al 75% de potencia
-    Serial.println("Moviendo ATRÁS al 75%");
-    motor_move(-75.0);
-    delay(3000); // Durante 3 segundos
-
-    // 4. Frenar
-    Serial.println("FRENANDO");
-    motor_stop();
-    delay(2000); // Durante 2 segundos
+    Serial.println("PRUEBA: FRENO");
+    // Freno (IN1=L, IN2=L)
+    digitalWrite(PIN_MOTOR_IN1, LOW);
+    digitalWrite(PIN_MOTOR_IN2, LOW);
+    // 0% de potencia
+    ledcWrite(PWM_MOTOR_CHANNEL, 0);
+    delay(3000);
 }

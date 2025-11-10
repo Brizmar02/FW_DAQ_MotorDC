@@ -7,8 +7,8 @@
 // =========================================
 
 // --- Driver del Motor (TB6612) ---
-const int PIN_MOTOR_IN1  = 1;
-const int PIN_MOTOR_IN2  = 2;
+const int PIN_MOTOR_IN1  = 11;
+const int PIN_MOTOR_IN2  = 12;
 const int PIN_MOTOR_PWM  = 17;
 const int PIN_MOTOR_STBY = 14;
 
