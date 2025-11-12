@@ -2,69 +2,98 @@
 #include <config.h>
 #include <Arduino.h>
 
+// Incluimos todos los módulos
 #include <potenciometro.h>
 #include <motor.h>
 #include <encoder.h>
+#include <sensores.h>
 
-// Definición del ADC_MAX_RAW (podríamos moverlo a config.h)
+// Definición del ADC_MAX_RAW
 #define ADC_MAX_RAW 4095.0
 
-// --- control_init() se queda exactamente igual ---
+// Variables para el timing del reporte serial (no usar delay)
+unsigned long last_print_time = 0;
+const int PRINT_INTERVAL_MS = 100; // Imprimir datos cada 100ms (10Hz)
+
 void control_init() {
     Serial.begin(115200);
+    // Esperar un poco para que el serial estabilice
     delay(1000);
-    Serial.println("--- INICIANDO CONTROLADOR PRINCIPAL (Modo Bidireccional) ---");
+    
+    Serial.println("--- INICIANDO SISTEMA DE RECOLECCION DE DATOS ---");
+    Serial.println("Formato CSV: Tiempo(ms), Setpoint(RPM), Real(RPM), Corriente(A), PWM(%)");
+
+    // 1. Inicializar Sensores (CRÍTICO: Hacer esto con motor parado para calibrar corriente)
+    Serial.println("Calibrando sensores...");
+    sensores_init(); 
+
+    // 2. Inicializar resto del hardware
     pot_init();
     motor_init();
     encoder_init(); 
-    Serial.println("Sistema listo. Mueve el potenciómetro.");
+    
+    Serial.println("Sistema listo. Inicio de loop.");
     }
 
-    /**
-     * @brief Función helper para mapear un float (como la de Arduino pero con floats)
-     */
+    // Función helper para mapeo flotante
     static float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-
-// --- ¡LÓGICA DE CONTROL ACTUALIZADA! ---
 void control_loop() {
-    // 1. Leer el valor filtrado del potenciómetro (0.0 a 4095.0)
-    float adc_value = pot_get_filtered_value();
+    // --- 1. LECTURA DE ENTRADAS ---
+    
+    // Potenciómetro (Setpoint filtrado)
+    float adc_pot = pot_get_filtered_value();
+    
+    // Encoder (Velocidad Real)
+    float rpm_real = encoder_get_velocity_rpm();
 
-    float porcentaje_motor = 0.0; // Por defecto, el motor está parado
+    // Corriente (Consumo)
+    float corriente_A = sensor_get_corriente_A();
 
-    // 2. Comprobar si estamos fuera de la "zona muerta"
-    if (adc_value > (POT_MID_POINT + POT_DEADZONE)) {
-        // --- Sección ADELANTE (Horario) ---
-        // Mapeamos el rango [Centro+ZonaMuerta, MaxADC] a [0.0, 100.0]
-        porcentaje_motor = mapf(adc_value, 
-                                POT_MID_POINT + POT_DEADZONE, 
-                                ADC_MAX_RAW, 
-                                0.0, 
-                                100.0);
 
-    } else if (adc_value < (POT_MID_POINT - POT_DEADZONE)) {
-        // --- Sección REVERSA (Antihorario) ---
-        // Mapeamos el rango [0, Centro-ZonaMuerta] a [-100.0, 0.0]
-        porcentaje_motor = mapf(adc_value, 
-                                0.0, 
-                                POT_MID_POINT - POT_DEADZONE, 
-                                -100.0, 
-                                0.0);
+    // --- 2. LÓGICA DE CONTROL (Lazo Abierto por ahora) ---
+    
+    float porcentaje_motor = 0.0;
+    float rpm_setpoint = 0.0; // Solo para registro
+
+    // Lógica de Zona Muerta y Bidireccional
+    if (adc_pot > (POT_MID_POINT + POT_DEADZONE)) {
+        // ADELANTE
+        porcentaje_motor = mapf(adc_pot, POT_MID_POINT + POT_DEADZONE, ADC_MAX_RAW, 0.0, 100.0);
+        // Calculamos qué RPM "desea" el usuario teóricamente (solo para referencia)
+        rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM;
+
+    } else if (adc_pot < (POT_MID_POINT - POT_DEADZONE)) {
+        // REVERSA
+        porcentaje_motor = mapf(adc_pot, 0.0, POT_MID_POINT - POT_DEADZONE, -100.0, 0.0);
+        rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM; // Será negativo
     }
-    // Si estamos DENTRO de la zona muerta, 'porcentaje_motor' se queda en 0.0
-
-    // 3. Limitar el valor por seguridad (evita que mapf se pase de 100)
+    
+    // Limites de seguridad
     if (porcentaje_motor > 100.0) porcentaje_motor = 100.0;
     if (porcentaje_motor < -100.0) porcentaje_motor = -100.0;
 
-    // 4. Mover el motor
+
+    // --- 3. ACTUACIÓN ---
     motor_move(porcentaje_motor);
 
-    // 5. Imprimir los datos
-    Serial.printf("ADC: %.0f | Porcentaje Motor: %.2f %%\n", adc_value, porcentaje_motor);
 
-    delay(50); 
+    // --- 4. TELEMETRÍA (REPORTE DE DATOS) ---
+    // Usamos millis() para no bloquear el loop con delays
+    unsigned long current_time = millis();
+    
+    if (current_time - last_print_time >= PRINT_INTERVAL_MS) {
+        last_print_time = current_time;
+        
+        // Imprimimos en formato CSV:
+        // Tiempo, Setpoint, VelocidadReal, Corriente, PWM_Enviado
+        Serial.printf("%lu, %.2f, %.2f, %.3f, %.1f\n", 
+                    current_time, 
+                    rpm_setpoint, 
+                    rpm_real, 
+                    corriente_A, 
+                    porcentaje_motor);
+    }
 }

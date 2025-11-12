@@ -4,7 +4,7 @@
 
 // Variable global para guardar el "punto cero" calibrado
 // Volvemos a poner 'static' si ya terminaste de depurar con main.cpp
-float g_adc_offset_corriente = 0.0; 
+static float g_adc_offset_corriente = 0.0; 
 
 // Número de muestras para el promedio en tiempo real
 #define AVG_MUESTRAS 200
