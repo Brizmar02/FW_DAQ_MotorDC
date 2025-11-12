@@ -1,36 +1,29 @@
-#pragma once
+#ifndef SENSORES_H
+#define SENSORES_H
 
 /**
- * @file sensores.h
- * @brief Módulo de adquisición para sensores analógicos.
- * * Maneja la lectura del Potenciómetro, Sensor de Corriente (ACS712)
- * * y el Divisor de Voltaje.
- * * Incluye la calibración de offset para el ACS712.
- */
-
-// --- FUNCIONES PÚBLICAS ---
-
-/**
- * @brief Inicializa los pines de los sensores y calibra el offset del ACS712.
- * ¡Importante! Llamar en setup() ANTES de encender el motor.
+ * @brief Inicializa los sensores de corriente y voltaje.
+ * ¡IMPORTANTE! Esta función debe llamarse en setup(), ANTES
+ * de que el motor reciba cualquier comando de movimiento.
+ * Se usa para calibrar el "punto cero" (offset) del sensor ACS712.
  */
 void sensores_init();
 
 /**
- * @brief Lee el valor crudo del potenciómetro (0-4095).
- * @return El valor ADC del potenciómetro.
+ * @brief Lee el sensor de corriente y devuelve el valor filtrado en Amperios (A).
+ * Utiliza un cálculo de RMS para obtener una lectura precisa
+ * incluso bajo la carga de un motor con PWM.
+ *
+ * @return float La corriente (RMS) que consume el motor en Amperios.
  */
-int sensores_leer_potenciometro_raw();
+float sensor_get_corriente_A();
 
 /**
- * @brief Mide, filtra y devuelve la corriente del motor en Amperios (A).
- * @return Corriente filtrada en Amperios.
+ * @brief Lee el sensor de voltaje (divisor) y devuelve el valor en Voltios (V).
+ * Si el sensor está deshabilitado en config.h, devolverá 0.0.
+ *
+ * @return float El voltaje de la fuente de alimentación del motor (ej. 11.5V).
  */
-float sensores_leer_corriente();
+float sensor_get_voltaje_V();
 
-/**
- * @brief Mide y devuelve el voltaje del motor en Voltios (V).
- * * Respeta el interruptor 'SENSOR_VOLTAJE_HABILITADO' en config.h.
- * @return Voltaje medido en Voltios, o 0.0 si está deshabilitado.
- */
-float sensores_leer_voltaje();
+#endif // SENSORES_H
