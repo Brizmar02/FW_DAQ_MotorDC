@@ -1,94 +1,84 @@
 #include "sensores.h"
-#include "config.h" // Incluimos nuestra configuración
+#include <config.h>
+#include <Arduino.h>
 
-// --- VARIABLES PRIVADAS (Globales a este archivo) ---
+// Variable global para guardar el "punto cero" calibrado
+// Volvemos a poner 'static' si ya terminaste de depurar con main.cpp
+static float g_adc_offset_corriente = 0.0; 
 
-/**
- * @brief Almacena el voltaje de "cero Amperios" del ACS712.
- * Se calibra una sola vez en sensores_init()
- */
-static float g_acs712_offset_volts = 0.0;
+// Número de muestras para el promedio en tiempo real
+#define AVG_MUESTRAS 200
 
-// --- IMPLEMENTACIÓN DE FUNCIONES ---
-
-/**
- * @brief Inicializa y calibra sensores.
- */
 void sensores_init() {
-    // 1. Configurar pines analógicos (buena práctica)
-    pinMode(PIN_POTENCIOMETRO, INPUT);
+    // 1. Configurar pines
     pinMode(PIN_SENSOR_CORRIENTE, INPUT);
-    pinMode(PIN_SENSOR_VOLTAJE, INPUT);
-
-    // 2. ¡LA CALIBRACIÓN CRÍTICA!
-    // Mide el offset del ACS712 antes de que el motor consuma corriente.
-    // Esto es lo que el código original hacía mal.
     
-    long suma_adc = 0;
-    const int muestras_calibracion = 1000; // Tomamos 1000 muestras para un offset preciso
-    
-    Serial.println("Calibrando sensor de corriente... No mueva el motor.");
-    
-    for (int i = 0; i < muestras_calibracion; i++) {
-        suma_adc += analogRead(PIN_SENSOR_CORRIENTE);
-        delay(1); // Pequeña pausa entre lecturas
+    if (VOLTAGE_SENSOR_ENABLED) {
+        pinMode(PIN_SENSOR_VOLTAJE, INPUT);
     }
 
-    // Calcular el voltaje promedio de offset
-    float adc_promedio = (float)suma_adc / (float)muestras_calibracion;
-    g_acs712_offset_volts = (adc_promedio * VREF) / ADC_RESOLUTION;
+    // --- MEJORA 1: TIEMPO DE ESTABILIZACIÓN ---
+    // El filtro RC (10k + 10uF) tarda un tiempo en cargarse hasta 2.5V.
+    // Esperamos 1 segundo completo para asegurar estabilidad eléctrica.
+    delay(1000);
 
-    Serial.print("Calibración completa. Offset ACS712: ");
-    Serial.print(g_acs712_offset_volts, 4);
-    Serial.println(" V");
+    // --- MEJORA 2: CALIBRACIÓN ROBUSTA ---
+    // Tomamos un promedio largo para determinar el "cero" exacto.
+    long sum_offset = 0;
+    const int muestras_calibracion = 500;
+
+    // Descartamos las primeras 10 lecturas por seguridad
+    for(int i=0; i<10; i++) analogRead(PIN_SENSOR_CORRIENTE);
+
+    for (int i = 0; i < muestras_calibracion; i++) {
+        sum_offset += analogRead(PIN_SENSOR_CORRIENTE);
+        // Un pequeño retardo entre muestras ayuda a reducir ruido aleatorio
+        delayMicroseconds(500); 
+    }
+    
+    // Guardamos el promedio como nuestro offset base
+    g_adc_offset_corriente = (float)sum_offset / (float)muestras_calibracion;
 }
 
-/**
- * @brief Lee el valor crudo del potenciómetro.
- */
-int sensores_leer_potenciometro_raw() {
-    return analogRead(PIN_POTENCIOMETRO);
-}
+float sensor_get_corriente_A() {
+    // Usamos el método de PROMEDIO (no RMS) que funciona mejor con el filtro RC
+    
+    long suma_lecturas = 0;
 
-/**
- * @brief Mide la corriente.
- */
-float sensores_leer_corriente() {
-    // Para una lectura estable, tomamos un pequeño promedio.
-    // No usamos un 'for' bloqueante como el código original.
-    // Usaremos un filtro simple más adelante si es necesario,
-    // por ahora, una lectura directa es más rápida.
-    // (Nota: Para un sistema final, un filtro de promedio móvil es ideal)
+    for (int i = 0; i < AVG_MUESTRAS; i++) {
+        int valor_crudo = analogRead(PIN_SENSOR_CORRIENTE);
+        
+        // Restar el offset calibrado. 
+        // Nota: Al restar floats, mantenemos la precisión decimal.
+        suma_lecturas += ((float)valor_crudo - g_adc_offset_corriente);
+    }
 
-    int lectura_adc = analogRead(PIN_SENSOR_CORRIENTE);
-    
-    // 1. Convertir lectura a voltaje
-    float voltaje_sensor = (lectura_adc * VREF) / ADC_RESOLUTION;
-    
-    // 2. Restar el offset calibrado y calcular Amperios
-    float corriente = (voltaje_sensor - g_acs712_offset_volts) / ACS712_SENSITIVITY;
-    
+    // Promedio de las diferencias
+    float valor_promedio_adc = (float)suma_lecturas / (float)AVG_MUESTRAS;
+
+    // Convertir a Voltios (delta de voltaje respecto al centro)
+    float voltaje_delta = (valor_promedio_adc / ADC_RESOLUTION) * VREF;
+
+    // Convertir a Amperios
+    // Usamos abs() porque la corriente puede oscilar levemente en negativo por ruido
+    float corriente = abs(voltaje_delta / ACS712_SENSITIVITY);
+
+    // Supresión de ruido de fondo (Deadzone)
+    // Si la corriente es absurdamente baja (ej. < 20mA), forzamos a 0
+    // para que se vea limpio en la gráfica.
+    if (corriente < 0.02) {
+        corriente = 0.0;
+    }
+
     return corriente;
 }
 
-/**
- * @brief Mide el voltaje del motor.
- */
-float sensores_leer_voltaje() {
-    
-    // Aquí usamos el "interruptor" de config.h
-    if (VOLTAGE_SENSOR_ENABLED == false) {
-        return 0.0; // Devolvemos 0.0V si no está instalado
+float sensor_get_voltaje_V() {
+    if (!VOLTAGE_SENSOR_ENABLED) {
+        return 0.0;
     }
 
-    // Si está habilitado, medimos:
-    int lectura_adc = analogRead(PIN_SENSOR_VOLTAJE);
-    
-    // 1. Convertir lectura ADC al voltaje en el pin (ej. 2.4V)
-    float voltaje_pin = (lectura_adc * VREF) / ADC_RESOLUTION;
-    
-    // 2. Aplicar el factor de multiplicación para obtener el voltaje real (ej. 12V)
-    float voltaje_real = voltaje_pin * VOLTAGE_DIVIDER_FACTOR;
-    
-    return voltaje_real;
+    int valor_crudo = analogRead(PIN_SENSOR_VOLTAJE);
+    float voltaje_adc = ((float)valor_crudo / ADC_RESOLUTION) * VREF;
+    return voltaje_adc * VOLTAGE_DIVIDER_FACTOR;
 }

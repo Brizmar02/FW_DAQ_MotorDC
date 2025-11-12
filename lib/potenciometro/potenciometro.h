@@ -16,6 +16,13 @@ void pot_init();
 int pot_get_raw_value();
 
 /**
+ * @brief Devuelve el valor promedio y filtrado del ADC.
+ * Este es el valor que usará el control para la lógica de punto muerto.
+ * @return float El valor filtrado (0.0 a 4095.0).
+ */
+float pot_get_filtered_value();
+
+/**
  * @brief Lee el potenciómetro, filtra el ruido y lo mapea a un valor de RPM.
  * * Esta es la función principal que usará el controlador PID 
  * para saber cuál es el "setpoint" o la velocidad deseada.

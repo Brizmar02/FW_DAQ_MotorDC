@@ -1,29 +1,28 @@
-#pragma once
+#ifndef MOTOR_H
+#define MOTOR_H
 
 /**
- * @file motor.h
- * @brief Módulo de control para el driver de motor TB6612FNG.
- * * Encapsula la inicialización del PWM (LEDC) y la lógica de
- * pines (IN1, IN2, STBY) para controlar el motor.
- */
-
-// --- FUNCIONES PÚBLICAS ---
-
-/**
- * @brief Inicializa el periférico LEDC para PWM y configura los pines.
- * Debe llamarse una vez en el setup().
+ * @brief Inicializa el módulo del motor (TB6612FNG).
+ * Configura los pines de dirección (IN1, IN2, STBY) como salidas.
+ * Configura el canal PWM (LEDC del ESP32) para el control de velocidad (pin PWM).
  */
 void motor_init();
 
 /**
- * @brief Controla el motor con una velocidad y dirección dadas.
- * * @param duty_cycle El valor de "potencia" (0 a PWM_MAX_DUTY)
- * @param direction La dirección (true = adelante, false = atrás)
+ * @brief Controla la velocidad y dirección del motor.
+ * Esta es la función principal para tus pruebas de recolección de datos.
+ *
+ * @param porcentaje Un valor de -100.0 a +100.0:
+ * - +100.0 = Máxima velocidad en sentido horario (adelante).
+ * - -100.0 = Máxima velocidad en sentido antihorario (reversa).
+ * - 0.0    = Parar (freno).
  */
-void motor_drive(int duty_cycle, bool direction);
+void motor_move(float porcentaje);
 
 /**
- * @brief Detiene el motor aplicando un "freno corto" (ambos pines a LOW).
- * Esto es más rápido que simplemente apagar el STBY.
+ * @brief Detiene el motor inmediatamente (freno).
+ * Es un atajo para motor_move(0).
  */
-void motor_brake();
+void motor_stop();
+
+#endif // MOTOR_H
