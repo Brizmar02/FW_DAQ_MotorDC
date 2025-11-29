@@ -137,18 +137,32 @@ float encoder_get_velocity_rpm() {
     g_last_position = current_position;
     g_last_time_ms = current_time_ms;
 
+    // Última velocidad válida para evitar picos erráticos
+    static float last_valid_rpm = 0.0;
+
     // --- Cálculo ---
     // 1. Pulsos por segundo (PPS)
     // (pulsos / milisegundos) * 1000 = pulsos / segundo
     float pps = (float)delta_position / (float)delta_time_ms * 1000.0;
 
     // 2. Revoluciones por segundo (RPS)
-    // (pulsos / seg) / (pulsos / rev) = rev / seg
-    float rps = pps / (float)ENCODER_PPR;
+    // Dividimos entre 4.0 porque el hardware cuenta 4 flancos por ciclo físico
+    float rps = pps / ((float)ENCODER_PPR * 4.0);
 
     // 3. Revoluciones por minuto (RPM)
     // (rev / seg) * 60 = rev / min
     float rpm = rps * 60.0;
+
+    // --- FILTRO DE SANIDAD (Sanity Check) ---
+    // Si la velocidad calculada es mayor a un límite físico imposible (ej. 1000 RPM)
+    // asumimos que es ruido y devolvemos el último valor bueno.
+    if (abs(rpm) > 1000.0) {
+        // Es un glitch, ignorar el nuevo dato y mantener el anterior
+        return last_valid_rpm; 
+    }
+
+    // Si el dato es creíble, actualizamos la memoria
+    last_valid_rpm = rpm;
 
     return rpm;
 }

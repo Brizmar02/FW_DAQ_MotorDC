@@ -38,6 +38,15 @@ void sensores_init() {
     
     // Guardamos el promedio como nuestro offset base
     g_adc_offset_corriente = (float)sum_offset / (float)muestras_calibracion;
+    
+    // Si el valor leído es demasiado bajo (ej. < 0.5V, que sería ~600 en ADC),
+    // significa que el sensor externo estaba APAGADO o desconectado.
+    // Forzamos el offset al valor teórico (mitad de ADC).
+    if (g_adc_offset_corriente < 600) {
+        // Asumiendo ADC de 12 bits (4095) y Vref 3.3V, la mitad es ~1900-2000
+        // Ajusta este valor si tu "cero" real es diferente cuando funciona bien.
+        g_adc_offset_corriente = 1950.0; 
+    }
 }
 
 float sensor_get_corriente_A() {
