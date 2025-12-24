@@ -1,0 +1,238 @@
+@startuml Sistema_Adquisicion_Datos_Motor_DC
+
+' Configuración de estilo
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+' ===========================
+' MÓDULO DE CONFIGURACIÓN
+' ===========================
+package "Configuración" <<Rectangle>> {
+    class Config {
+        ' Pines de Hardware
+        + {static} PIN_MOTOR_IN1: const int = 11
+        + {static} PIN_MOTOR_IN2: const int = 12
+        + {static} PIN_MOTOR_PWM: const int = 17
+        + {static} PIN_MOTOR_STBY: const int = 14
+        + {static} PIN_POTENCIOMETRO: const int = 4
+        + {static} PIN_SENSOR_CORRIENTE: const int = 5
+        + {static} PIN_SENSOR_VOLTAJE: const int = 6
+        + {static} PIN_ENC_A: const int = 36
+        + {static} PIN_ENC_B: const int = 37
+        
+        ' Parámetros PWM
+        + {static} PWM_MOTOR_CHANNEL: const int = 0
+        + {static} PWM_MOTOR_FREQ: const int = 1220
+        + {static} PWM_MOTOR_RES_BITS: const int = 10
+        + {static} PWM_MOTOR_MAX_DUTY: const int = 1023
+        
+        ' Parámetros de Sensores
+        + {static} VREF: const float = 3.3
+        + {static} ADC_RESOLUTION: const float = 4095.0
+        + {static} ACS712_SENSITIVITY: const float = 0.185
+        + {static} VOLTAGE_SENSOR_ENABLED: const bool = false
+        + {static} VOLTAGE_DIVIDER_FACTOR: const float = 5.0
+        
+        ' Parámetros de Encoder
+        + {static} ENCODER_PPR: const int = 374
+        
+        ' Parámetros de Control
+        + {static} MAX_RPM: const float = 126.0
+        + {static} POT_MID_POINT: const int = 2048
+        + {static} POT_DEADZONE: const int = 100
+    }
+}
+
+' ===========================
+' CAPA DE HARDWARE (HAL)
+' ===========================
+package "Capa de Abstracción de Hardware" <<Rectangle>> {
+    
+    ' --- MÓDULO MOTOR ---
+    class Motor {
+        {method} Funciones Públicas
+        + motor_init(): void
+        + motor_move(porcentaje: float): void
+        + motor_stop(): void
+        --
+        {method} Configuración Interna
+        - Usa LEDC (PWM Hardware)
+        - Control TB6612FNG
+    }
+    note right of Motor
+        **Driver**: TB6612FNG
+        **Rango**: -100.0 a +100.0%
+        **PWM**: 1.22 kHz, 10 bits
+    end note
+    
+    ' --- MÓDULO ENCODER ---
+    class Encoder {
+        {field} Variables Privadas
+        - {static} g_last_position: int64_t
+        - {static} g_last_time_ms: unsigned long
+        - {static} g_last_raw_count: int16_t
+        - {static} g_accumulated_count: int64_t
+        --
+        {method} Funciones Públicas
+        + encoder_init(): void
+        + encoder_reset_position(): void
+        + encoder_get_position(): int64_t
+        + encoder_get_velocity_rpm(): float
+        --
+        {method} Hardware Utilizado
+        - Usa PCNT (Pulse Counter)
+        - Modo Cuadratura
+    }
+    note right of Encoder
+        **Hardware**: PCNT Unit 0
+        **Resolución**: 374 PPR
+        **Desborde**: Manejado con 64 bits
+        **Filtro**: 80 ciclos APB (1000ns)
+    end note
+    
+    ' --- MÓDULO POTENCIÓMETRO ---
+    class Potenciometro {
+        {field} Variables Privadas
+        - {static} lecturas[10]: int
+        - {static} indice_lectura: int
+        - {static} total_lecturas: long
+        --
+        {method} Funciones Públicas
+        + pot_init(): void
+        + pot_get_raw_value(): int
+        + pot_get_filtered_value(): float
+        + pot_get_target_rpm(): float
+        --
+        {method} Filtrado
+        - Promedio Móvil (10 muestras)
+    }
+    note right of Potenciometro
+        **ADC**: 12 bits (0-4095)
+        **Filtro**: Promedio móvil
+        **Zona Muerta**: ±100 ADC
+    end note
+    
+    ' --- MÓDULO SENSORES ---
+    class Sensores {
+        {field} Variables Privadas
+        - {static} g_adc_offset_corriente: float
+        --
+        {method} Funciones Públicas
+        + sensores_init(): void
+        + sensor_get_corriente_A(): float
+        + sensor_get_voltaje_V(): float
+        --
+        {method} Calibración
+        - Offset automático (500 muestras)
+        - Tiempo de estabilización RC
+    }
+    note right of Sensores
+        **Corriente**: ACS712-05A
+        **Voltaje**: Divisor resistivo (opcional)
+        **Deadzone**: < 20mA forzado a 0
+        **Calibración**: 1 seg al inicio
+    end note
+}
+
+' ===========================
+' CAPA DE CONTROL
+' ===========================
+package "Control & Telemetría" <<Rectangle>> {
+    
+    class Control {
+        {field} Estructura de Datos
+        - dataPacket: TelemetryPacket
+        - last_print_time: unsigned long
+        - {static} PRINT_INTERVAL_MS: const int = 20
+        --
+        {method} Funciones Públicas
+        + control_init(): void
+        + control_loop(): void
+        --
+        {method} Funciones Privadas
+        - {static} mapf(...): float
+    }
+    
+    class TelemetryPacket <<struct>> {
+        + header[2]: uint8_t
+        + time_ms: uint32_t
+        + setpoint_rpm: float
+        + real_rpm: float
+        + current_A: float
+        + pwm_val: float
+        + terminator[2]: uint8_t
+        --
+        {method} Atributo
+        - __attribute__((packed))
+    }
+    note bottom of TelemetryPacket
+        **Tamaño**: 24 bytes
+        **Header**: 0xA5, 0x5A
+        **Terminator**: 0x0D, 0x0A (CRLF)
+        **Frecuencia**: 50 Hz (20ms)
+    end note
+}
+
+' ===========================
+' PUNTO DE ENTRADA
+' ===========================
+package "Aplicación Principal" <<Rectangle>> {
+    class Main {
+        + setup(): void
+        + loop(): void
+    }
+    note right of Main
+        **Framework**: Arduino
+        **Plataforma**: ESP32-S3
+        Delega toda la lógica
+        al módulo Control
+    end note
+}
+
+' ===========================
+' RELACIONES DE DEPENDENCIA
+' ===========================
+
+' main.cpp usa Control
+Main ..> Control : <<usa>>
+
+' Control depende de todos los módulos HAL
+Control ..> Motor : <<usa>>
+Control ..> Encoder : <<usa>>
+Control ..> Potenciometro : <<usa>>
+Control ..> Sensores : <<usa>>
+
+' Control usa la estructura de telemetría
+Control *-- TelemetryPacket : <<contiene>>
+
+' Todos los módulos HAL dependen de Config
+Motor ..> Config : <<lee>>
+Encoder ..> Config : <<lee>>
+Potenciometro ..> Config : <<lee>>
+Sensores ..> Config : <<lee>>
+Control ..> Config : <<lee>>
+' Relación de flujo de datos (opcional, para claridad)
+Potenciometro -[#blue]-> Control : setpoint_rpm
+Encoder -[#blue]-> Control : real_rpm
+Sensores -[#blue]-> Control : current_A
+Control -[#blue]-> Motor : pwm_val
+
+' ===========================
+' NOTAS ADICIONALES
+' ===========================
+note bottom of "Capa de Abstracción de Hardware"
+    **Arquitectura Modular**
+    Cada módulo es independiente y reutilizable.
+    Comunicación únicamente a través de funciones públicas.
+end note
+
+note top of "Control & Telemetría"
+    **Lógica de Negocio**
+    - Lee todas las entradas (pot, encoder, sensores)
+    - Aplica zona muerta y mapeo
+    - Envía comando al motor
+    - Transmite telemetría binaria a 50 Hz
+end note
+
+@enduml
