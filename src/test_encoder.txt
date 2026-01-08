@@ -1,0 +1,48 @@
+#include <Arduino.h>
+
+// --- CONFIGURACIÓN ACTUAL ---
+const int PIN_ENC_A = 7;   // Pin nuevo (Seguro)
+const int PIN_ENC_B = 16;  // Pin viejo (Seguro)
+
+volatile long pulsos = 0;
+unsigned long last_print = 0;
+
+// Rutina de interrupción (lo más simple posible)
+void IRAM_ATTR al_mover_encoder() {
+    // Si A cambió, miramos B para saber dirección
+    if (digitalRead(PIN_ENC_B) == digitalRead(PIN_ENC_A)) {
+        pulsos++;
+    } else {
+        pulsos--;
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println(">>> INICIO FIRMWARE PRUEBA v3.5 <<<");
+    delay(1000);
+    Serial.println(">>> TEST BASICO DE ENCODER (INTERRUPCIONES) <<<");
+    Serial.printf("Usando pines: A=%d, B=%d\n", PIN_ENC_A, PIN_ENC_B);
+
+    // 1. Configurar Pines con PULLUP explícito (Software)
+    pinMode(PIN_ENC_A, INPUT_PULLUP);
+    pinMode(PIN_ENC_B, INPUT_PULLUP);
+
+    // 2. Adjuntar interrupción al Pin A
+    attachInterrupt(digitalPinToInterrupt(PIN_ENC_A), al_mover_encoder, CHANGE);
+}
+
+void loop() {
+    // Diagnóstico eléctrico en tiempo real
+    int estado_A = digitalRead(PIN_ENC_A);
+    int estado_B = digitalRead(PIN_ENC_B);
+
+    // Imprimir cada 200ms
+    if (millis() - last_print > 200) {
+        last_print = millis();
+        
+        Serial.print("Estado A: "); Serial.print(estado_A);
+        Serial.print(" | Estado B: "); Serial.print(estado_B);
+        Serial.print(" | CONTEO TOTAL: "); Serial.println(pulsos);
+    }
+}

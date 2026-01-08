@@ -21,8 +21,8 @@ const int PIN_SENSOR_CORRIENTE = 5;
 const int PIN_SENSOR_VOLTAJE = 6; 
 
 // --- Encoder ---
-const int PIN_ENC_A = 36;
-const int PIN_ENC_B = 37;
+const int PIN_ENC_A = 7;
+const int PIN_ENC_B = 16;
 
 // ====================================
 // === PARÁMETROS DE FUNCIONAMIENTO ===
