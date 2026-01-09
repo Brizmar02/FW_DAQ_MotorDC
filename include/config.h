@@ -55,7 +55,7 @@ const float VOLTAGE_DIVIDER_FACTOR = (30000.0 + 7500.0) / 7500.0; // = 5.0
 // ===================================
 // Este es el número de pulsos (contando ambos bordes de A y B)
 // que el encoder genera por CADA REVOLUCIÓN del eje de salida.
-const int ENCODER_PPR = 374; // Para un reductor 34:1 y encoder de 11 pulsos
+const int ENCODER_PPR = 827.2; // Para un reductor 18.8:1 y encoder de 11 pulsos
 
 // --- Control ---
 const int POT_MID_POINT = 2048; // Punto central aprox. del ADC (4096 / 2)
