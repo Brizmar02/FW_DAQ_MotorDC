@@ -1,0 +1,12 @@
+#include <Arduino.h>
+void setup() {
+    // No hacemos nada, solo existir.
+    // Si tu placa tiene LED integrado en el pin 2, parpadealo.
+    pinMode(2, OUTPUT); 
+}
+void loop() {
+    digitalWrite(2, HIGH);
+    delay(100);
+    digitalWrite(2, LOW);
+    delay(100);
+}
