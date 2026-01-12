@@ -17,7 +17,8 @@ struct TelemetryPacket {
     uint32_t time_ms;       
     float setpoint_rpm;     
     float real_rpm;         
-    float current_A;        
+    float current_A;
+    float voltage_V;        
     float pwm_val;          
     uint8_t terminator[2];  
 } __attribute__((packed));
@@ -33,7 +34,7 @@ static bool is_auto_mode = false;   // false = Manual (Pot), true = Auto (GUI)
 static float gui_pwm_target = 0.0;  // Valor recibido desde la GUI
 
 void control_init() {
-    Serial.begin(115200);
+    Serial.begin(9600);
     delay(1000);
     
     // Inicializar la cabecera
@@ -41,6 +42,11 @@ void control_init() {
     dataPacket.header[1] = 0x5A; 
     dataPacket.terminator[0] = 0x0D; 
     dataPacket.terminator[1] = 0x0A;
+
+    // Deshabilitar control Manual (Potenciómetro) al inicio
+    motor_move(0);
+    gui_pwm_target = 0.0;
+    is_auto_mode = true; // Arranca en Auto para ignorar el pin flotante del pot
 
     // Inicializar Hardware
     sensores_init(); 
@@ -55,90 +61,82 @@ static float mapf(float x, float in_min, float in_max, float out_min, float out_
 }
 
 void control_loop() {
-    
     // ---------------------------------------------------------
-    // 0. RECEPCIÓN DE COMANDOS DESDE MATLAB (Slider/Switch)
+    // 0. RECEPCIÓN LIGERA (9600 Baud)
     // ---------------------------------------------------------
-    // Protocolo: [@][Cmd][Byte1][Byte2][Byte3][Byte4][\n] (7 Bytes)
     if (Serial.available() >= 7) { 
-        // "Peek" para ver si es el Header '@' (64)
-        if (Serial.peek() == 64) {
+        if (Serial.peek() == 64) { // ¿Es '@'?
             Serial.read(); // Consumir '@'
             
-            char cmd = (char)Serial.read(); // Leer comando ('M' o 'P')
-            
-            // Leer los 4 bytes del float
+            char cmd = (char)Serial.read(); 
             float valorRecibido = 0.0;
             Serial.readBytes((uint8_t*)&valorRecibido, 4);
+            uint8_t footer = Serial.read(); 
             
-            uint8_t footer = Serial.read(); // Leer terminador '\n' (10)
-            
-            if (footer == 10) { // Integridad OK
-                
-                // CASO 'M': Cambio de MODO (Auto/Manual)
-                if (cmd == 'M') {
-                    // MATLAB envía 1.0 para Auto, 0.0 para Manual
-                    if (valorRecibido > 0.5) {
-                        is_auto_mode = true;
-                        gui_pwm_target = 0; // Seguridad: Al entrar a auto, empezar en 0
-                    } else {
-                        is_auto_mode = false;
+            if (footer == 10) { // Trama Válida
+                if (!isnan(valorRecibido) && !isinf(valorRecibido) && abs(valorRecibido) <= 105.0) {
+                    if (cmd == 'M') {
+                        bool nuevoModo = (valorRecibido > 0.5);
+                        // Resetear target solo si CAMBIAMOS de modo, no siempre
+                        if (nuevoModo != is_auto_mode) gui_pwm_target = 0; 
+                        is_auto_mode = nuevoModo;
                     }
-                }
-                
-                // CASO 'P': Comando de PWM (Solo efectivo si is_auto_mode = true)
-                if (cmd == 'P') {
-                    // Actualizamos la variable objetivo
-                    if (valorRecibido > 100.0) valorRecibido = 100.0;
-                    if (valorRecibido < -100.0) valorRecibido = -100.0;
-                    gui_pwm_target = valorRecibido;
+                    if (cmd == 'P') {
+                        // Clamp del valor recibido
+                        if (valorRecibido > 100.0) valorRecibido = 100.0;
+                        if (valorRecibido < -100.0) valorRecibido = -100.0;
+                        gui_pwm_target = valorRecibido;
+                    }
                 }
             }
         } else {
-            // Limpieza de buffer si hay basura (byte no es '@')
             Serial.read(); 
         }
     }
 
     // --- 1. LECTURA DE SENSORES ---
     float adc_pot = pot_get_filtered_value();
-    float rpm_real = encoder_get_velocity_rpm();
+    float rpm_raw = encoder_get_velocity_rpm();
     float corriente_A = sensor_get_corriente_A();
+    float voltaje_V = sensor_get_voltaje_V();
 
-    // --- 2. LÓGICA DE CONTROL (SELECTOR DE MODO) ---
+    // --- CORRECCIÓN DE SIGNO ---
+    float rpm_real = rpm_raw * -1.0;
+
+    // --- 2. LÓGICA DE CONTROL ---
     float porcentaje_motor = 0.0;
     float rpm_setpoint = 0.0; 
 
-    if (is_auto_mode) {
-        // --- MODO AUTOMÁTICO (GUI) ---
-        // Usamos el valor que llegó por Serial
-        porcentaje_motor = gui_pwm_target;
-        
-        // Calculamos el setpoint teórico de RPM solo para graficarlo
-        rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM;
+    // FORZADO DE SEGURIDAD (Opcional):
+    // Si quitaste el potenciómetro físico, descomenta la siguiente línea para que SIEMPRE sea auto
+    // is_auto_mode = true; 
 
+    if (is_auto_mode) {
+        // --- MODO AUTOMÁTICO ---
+        porcentaje_motor = gui_pwm_target;
+        rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM;
     } else {
-        // --- MODO MANUAL (POTENCIÓMETRO) ---
-        // Usamos la lógica original
+        // --- MODO MANUAL (SI EL POTENCIÓMETRO EXISTIERA) ---
+        // Si no hay pot, esto leerá ruido, pero si is_auto_mode es true, nunca entrará aquí.
         if (adc_pot > (POT_MID_POINT + POT_DEADZONE)) {
             porcentaje_motor = mapf(adc_pot, POT_MID_POINT + POT_DEADZONE, ADC_MAX_RAW, 0.0, 100.0);
-            rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM;
         } else if (adc_pot < (POT_MID_POINT - POT_DEADZONE)) {
             porcentaje_motor = mapf(adc_pot, 0.0, POT_MID_POINT - POT_DEADZONE, -100.0, 0.0);
-            rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM; 
         }
+        rpm_setpoint = (porcentaje_motor / 100.0) * MAX_RPM; 
     }
     
-    // Clamp final de seguridad
+    // Clamp final
     if (porcentaje_motor > 100.0) porcentaje_motor = 100.0;
     if (porcentaje_motor < -100.0) porcentaje_motor = -100.0;
 
-    // --- 3. ACTUACIÓN ---
-    motor_move(porcentaje_motor);
+    // --- 3. ACTUACIÓN (CORREGIDO) ---
+    // AQUÍ ES DONDE OCURRE LA MAGIA. 
+    // Le mandamos al motor lo que calculamos arriba.
+    motor_move(porcentaje_motor); 
 
-    // --- 4. TELEMETRÍA BINARIA ---
+    // --- 4. TELEMETRÍA ---
     unsigned long current_time = millis();
-    
     if (current_time - last_print_time >= PRINT_INTERVAL_MS) {
         last_print_time = current_time;
         
@@ -146,6 +144,7 @@ void control_loop() {
         dataPacket.setpoint_rpm = rpm_setpoint;
         dataPacket.real_rpm = rpm_real;
         dataPacket.current_A = corriente_A;
+        dataPacket.voltage_V = voltaje_V;
         dataPacket.pwm_val = porcentaje_motor;
 
         Serial.write((uint8_t*)&dataPacket, sizeof(dataPacket));

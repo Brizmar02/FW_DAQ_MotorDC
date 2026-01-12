@@ -21,8 +21,8 @@ const int PIN_SENSOR_CORRIENTE = 5;
 const int PIN_SENSOR_VOLTAJE = 6; 
 
 // --- Encoder ---
-const int PIN_ENC_A = 7;
-const int PIN_ENC_B = 16;
+const int PIN_ENC_A = 16;
+const int PIN_ENC_B = 7;
 
 // ====================================
 // === PARÁMETROS DE FUNCIONAMIENTO ===
@@ -40,22 +40,24 @@ const float ADC_RESOLUTION = 4095.0;   // 12 bits (0-4095)
 const float ACS712_SENSITIVITY = 0.185; // 185mV/A para el modelo de 5A
 
 // --- RPM Máximas para el POTENCIÓMETRO ---
-#define MAX_RPM 126.0 // RPM máximas del motor con reductor 34:1
+#define MAX_RPM 350.0 // RPM máximas del motor con reductor 34:1
 
 // --- Configuración del Divisor de Voltaje ---
-const bool VOLTAGE_SENSOR_ENABLED = false; // Habilitar/Dehabilitar sensor de voltaje
+const bool VOLTAGE_SENSOR_ENABLED = true; // Habilitar/Dehabilitar sensor de voltaje
 
 // Si mides 12V, un divisor con R1=30k y R2=7.5k es ideal.
 // Vout = Vin * (R2 / (R1 + R2)) -> 12V * (7.5 / 37.5) = 2.4V (Seguro para 3.3V)
 // El factor de multiplicación es (R1 + R2) / R2
-const float VOLTAGE_DIVIDER_FACTOR = (30000.0 + 7500.0) / 7500.0; // = 5.0
+# define R1_OHMS 7100.0f // Resistencia que va al Positivo (Ohms)
+# define R2_OHMS 2200.0f  // Resistencia que va a Tierra (Ohms)
+const float VOLTAGE_DIVIDER_FACTOR = (R1_OHMS + R2_OHMS) / R2_OHMS; // = 5.0
 
 // ===================================
 // ==== CONFIGURACIÓN DEL ENCODER ====
 // ===================================
 // Este es el número de pulsos (contando ambos bordes de A y B)
 // que el encoder genera por CADA REVOLUCIÓN del eje de salida.
-const int ENCODER_PPR = 1320; // Para un reductor 30:1 y encoder de 11 pulsos
+const int ENCODER_PPR = 1322; // Para un reductor 30:1 y encoder de 11 pulsos
 
 // --- Control ---
 const int POT_MID_POINT = 2048; // Punto central aprox. del ADC (4096 / 2)

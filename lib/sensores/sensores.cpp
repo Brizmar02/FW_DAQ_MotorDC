@@ -73,12 +73,35 @@ float sensor_get_corriente_A() {
     return corriente;
 }
 
+// Variable estática para el filtro (mantiene su valor entre llamadas)
+static float voltaje_filtrado = 0.0;
+static bool primera_lectura = true;
+
 float sensor_get_voltaje_V() {
     if (!VOLTAGE_SENSOR_ENABLED) {
         return 0.0;
     }
 
+    // 1. Lectura Cruda
     int valor_crudo = analogRead(PIN_SENSOR_VOLTAJE);
-    float voltaje_adc = ((float)valor_crudo / ADC_RESOLUTION) * VREF;
-    return voltaje_adc * VOLTAGE_DIVIDER_FACTOR;
+
+    // 2. Conversión a Voltaje Real Instantáneo
+    // Fórmula: (ADC / Resolución) * V_Referencia * Factor_Divisor
+    float voltaje_inst = ((float)valor_crudo / ADC_RESOLUTION) * VREF * VOLTAGE_DIVIDER_FACTOR;
+
+    // 3. Inicialización Rápida (Solo la primera vez)
+    // Evita que el filtro tarde en subir de 0 a 12V al encender
+    if (primera_lectura) {
+        voltaje_filtrado = voltaje_inst;
+        primera_lectura = false;
+        return voltaje_filtrado;
+    }
+
+    // 4. Filtro de Suavizado (Low Pass Filter)
+    // El factor 0.1 significa: "Confía 90% en el dato histórico y solo 10% en el nuevo dato"
+    // Esto elimina picos de ruido drásticos provocados por el motor.
+    // Si quieres que responda más rápido, cambia 0.1 a 0.2 o 0.3.
+    voltaje_filtrado = (voltaje_filtrado * 0.90) + (voltaje_inst * 0.10);
+
+    return voltaje_filtrado;
 }

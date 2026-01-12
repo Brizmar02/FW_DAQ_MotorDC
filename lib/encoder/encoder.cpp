@@ -82,11 +82,22 @@ void encoder_reset_position() {
 }
 
 int64_t encoder_get_position() {
-    int16_t current_raw_count = 0;
-    pcnt_get_counter_value(ENCODER_PCNT_UNIT, &current_raw_count);
-    int16_t delta = current_raw_count - g_last_raw_count;
-    g_accumulated_count += delta;
-    g_last_raw_count = current_raw_count;
+    int16_t count_now = 0;
+    
+    // 1. Leemos cuántos pulsos han ocurrido desde la última vez
+    pcnt_get_counter_value(ENCODER_PCNT_UNIT, &count_now);
+
+    // 2. Sumamos esos pulsos a nuestro acumulador seguro de 64 bits
+    g_accumulated_count += count_now;
+
+    // 3. ¡LA CURA! Reseteamos el contador de hardware a 0.
+    // Al vaciar el contador aquí, nunca le damos oportunidad de acercarse a 32,767.
+    // El "vaso" siempre está casi vacío, listo para nuevos pulsos.
+    pcnt_counter_clear(ENCODER_PCNT_UNIT);
+
+    // Nota: Ya no necesitamos 'g_last_raw_count' para nada, 
+    // porque la referencia siempre es 0.
+    
     return g_accumulated_count;
 }
 
